@@ -1,0 +1,141 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r Criação dos BLUE's}
+
+#install.packages("psych")
+library(lme4); #library(lme4qtl); 
+library(sommer) #modelos mistos
+library(randomForest);#library(nnet)
+library(ggplot2) #graficos
+library(reshape2); library(scales) #manejo de dados
+library(nadiv) #para lidar com pedigrees
+library(psych) #para funcao de traco de matrizes
+library(tidyr); #p/ comando %>% e funcao: separate_wider_delim
+library(dplyr);
+library(data.table);
+rm(list=ls())
+
+# padronizacao das variaveis (media=0; var=1)
+padr <- function(x){(x-mean(x))/sd(x)}
+
+#lendos os dados ambientipicos bahia
+envdat <- fread("/home/marco_antonio/artigo1/planilhas/EnvDat_full.csv")
+erbd <- fread("/home/marco_antonio/artigo1/planilhas/ERBD_artigo.csv")
+
+#criando os BLUEs
+erbd$EFFECTS <- as.factor(paste(erbd$id_amostra,erbd$TRIAL,erbd$BLO,erbd$REP,erbd$YEAR,sep="_"))
+table(erbd$TRIAL,erbd$YEAR)
+
+ver <- table(erbd$id_amostra,erbd$EFFECTS)
+
+ver1 <- ver; ver1[ver1>0] <- 1
+ver2 <- apply(ver1,1,sum)
+
+mod1 <- formula("GY ~ -1+GEN + (1|EFFECTS)")
+mod2 <- formula("GY ~ TRIAL + GEN + (1|EFFECTS)")
+
+genos <- paste("GEN", unique(erbd$GEN), sep="")
+
+aggregate(TRIAL~id_amostra, function(x)length(unique(x)),data=erbd)
+
+#localidades
+target <- unique(erbd$id_amostra)
+BLUEs <- list()
+
+rm(loc_i);# i <- 177
+for(i in target){message(i)
+loc_i <- droplevels(erbd[erbd$id_amostra==i,])
+head(loc_i)
+n_trials <- length(unique(loc_i$TRIAL))
+if(n_trials == 1) {fit <- lmer(mod1, loc_i)} else {fit <- lmer(mod2, loc_i)};rm(loc_i)
+BLUE <- fixef(fit)[names(fixef(fit))%in%genos]
+if(n_trials > 1) {BLUE<-BLUE+ fixef(fit)[1]}
+temp <- data.frame(id_amostra=i, GEN=names(BLUE), BLUE)
+BLUEs <- rbind(BLUEs, temp)
+}
+
+head(BLUEs)
+write.csv(BLUEs,"/home/marco_antonio/artigo1/planilhas/BLUEs.csv", row.names = FALSE)
+
+
+```
+
+```{r Validação do modelo}
+
+#quinta 25/01/2024
+
+BLUEs <- fread("/home/marco_antonio/artigo1/planilhas/BLUEs.csv")
+
+#Zerando dados menores do que 0
+a <- BLUEs$BLUE<0; BLUEs$BLUE[a]<-0
+hist(BLUEs$BLUE, 100)
+
+#Filtrando dados
+blues <- BLUEs; rm(BLUEs)
+
+blues$id_amostra <- as.factor(blues$id_amostra)
+blues$GEN <- as.factor(blues$GEN)
+genos <- levels(blues$GEN)
+id <- levels(blues$id_amostra)
+
+env <- envdat[envdat$id_amostra%in%levels(blues$id_amostra),]
+env <- as.data.frame(env)
+rownames(env) == env$id_amostra; 
+phe <- data.frame(blues[,-1],env[blues$id_amostra,]); rownames(phe) <- NULL
+phe[1:5,1:10];dim(phe)
+
+par(mfrow=c(2,1))#Verificando representatividade
+hist(env$X001,xlim=0:1);hist(envdat$X001,xlim=0:1)
+dev.off()
+
+### geração dos multiplos marcadores ambientomicos
+
+tpe <- rbind(data.frame("type"="phen",env),
+             data.frame("type"="area",envdat))
+tpe$type<-as.factor(tpe$type)
+tpe[,6:398]<-apply(tpe[,6:398],2,padr) #aqui não deveria entrar as coordenadas tbm?
+ggplot(tpe, aes(x=type, y=X127))+geom_boxplot()#confere EA
+
+fitness<-c(); ENVMkrs <- tpe[,1:5]; rm(temp); progress<-NULL
+for(i in 1:10){ 
+  #sorteando um numero de amostras:
+  nsamp <- sample(1:187,1);nsamp #sorteando de 2 a 10 genos
+  #subset contendo apenas os genos sorteados:
+  boots<-droplevels(phe[phe$id_amostra%in%sort(sample(id,nsamp)),])
+  ##Ajuste Linear:
+  set.seed(i);
+  #poptr<-sort(sample(1:nrow(boots),nrow(boots)/2))
+  poptr <- sort(sample(1:nrow(boots),nrow(boots)))
+  popvl<-setdiff(1:187, poptr)
+  
+  temp<-droplevels(boots[poptr,c(2,7:399)])
+  
+  colunas_explicativas <- colnames(temp)[-which(colnames(temp) == "BLUE")]
+  nvar=sample(10:150,1)
+  colunas_sorteadas <- sample(colunas_explicativas, nvar)
+  formula <- as.formula(paste("BLUE ~", paste(colunas_sorteadas, collapse = " + ")))
+  
+  treino<-lm(formula, 
+             data= temp)
+  rgg<-cor(predict(treino,boots[popvl,c(2,7:399)]),boots[popvl,]$BLUE)
+  fitness<-c(fitness,rgg)
+  
+  ENVfit<-lm(BLUE ~ ., 
+             data=droplevels(boots[,c(2,7:399)]))
+  R<-cor(predict(ENVfit),boots$BLUE)
+  message("process= ",i,", nsamp= ",nsamp,", nvar= ",nvar,", R= ",round(R,3),", rgg= ",round(rgg,3))  
+  progress<-rbind(progress,
+  data.frame("iter"=i,"nsamp"=nsamp,"nvar"=nvar,"R"=R,"rgg"=rgg))
+  
+  ENVMkr <- predict(ENVfit,tpe[,-(1:5)]); #ENVMkr[ENVMkr<0]<-0; 
+  #ENVMkr<-rescale(ENVMkr); #hist(ENVMkr)
+  
+  ENVMkrs <- data.frame(ENVMkrs,ENVMkr)
+};
+
+
+```
+

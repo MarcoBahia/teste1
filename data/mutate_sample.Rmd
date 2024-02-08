@@ -1,0 +1,110 @@
+---
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+BLUEs <- fread("/home/marco_antonio/artigo1/planilhas/BLUEs.csv")
+
+#Zerando dados menores do que 0
+a <- BLUEs$BLUE<0; BLUEs$BLUE[a]<-0
+hist(BLUEs$BLUE, 100)
+
+#Filtrando dados
+blues <- BLUEs; rm(BLUEs)
+
+blues$id_amostra <- as.factor(blues$id_amostra)
+blues$GEN <- as.factor(blues$GEN)
+
+genos <- levels(blues$GEN)
+id <- levels(blues$id_amostra)
+
+
+#dados ambientais
+envdat <- fread("/home/marco_antonio/artigo1/planilhas/EnvDat_full.csv")
+env <- envdat[envdat$id_amostra%in%levels(blues$id_amostra),]
+env <- as.data.frame(env)
+rownames(env) == env$id_amostra;
+
+
+smp0 <- table(blues$GEN, blues$id_amostra); smp0[smp0 > 0] <- 1
+summary(apply(smp0, 1, sum))
+smp1 <- (apply(smp0, 1, sum)); smp1 <- names(smp1[smp1>10])
+#10 é a media dos valores em summary
+
+env$id_amostra <- as.factor(env$id_amostra)
+
+env_cols <- env[,2]; env_cols <- cbind(env_cols, env[5:397])
+env_cols <- env_cols %>%
+  rename(id_amostra = "env_cols")
+tpe_temp <- merge(blues, env_cols, by= "id_amostra")
+
+i<- 1; rm(tpe_temp1)
+
+while(i<= 2){
+  
+  
+  tpe_temp1 <- tpe_temp
+  x <- sample(tpe_temp1[,4:396], sample(1:393,1))
+  tpe_temp1 <- cbind(tpe_temp1[,1:3], x)
+  
+ a <- sample(smp1, sample(length(smp1), 1))
+ #a <- sample(smp1, 50) para testar
+ 
+ tpe_sample_temp <- tpe_temp1 %>% filter(GEN %in% a)
+  
+  med_id_sample <- tpe_sample_temp %>%
+  group_by(id_amostra) %>%
+  summarize(
+    med_id_sample = mean(BLUE, na.rm = TRUE),
+    across(4:ncol(tpe_sample_temp), .fns = list(med=mean))
+    )
+  
+  tr_sample <- sort(sample(med_id_sample$id_amostra, 
+                           round(nrow(med_id_sample)*0.8, digits = 0)))
+  vl_sample <- sort(setdiff(med_id_sample$id_amostra, tr_sample))
+  
+  tpe_tr_temp <- med_id_sample %>% filter(id_amostra %in% tr_sample)
+  tpe_vl_temp <- med_id_sample %>% filter(id_amostra %in% vl_sample)
+  
+  #aplicar o modelo e testar aderencia 
+  # -> daqui para baixo
+  formula <- as.formula(paste("med_id_sample ~", paste(colnames(tpe_tr_temp[3:(ncol(tpe_tr_temp)-1)]), collapse = " + ")))
+  
+  treino<-lm(formula, 
+             data= tpe_tr_temp)
+  
+  rgg<-cor(predict(treino,tpe_vl_temp[c(3:ncol(tpe_vl_temp))]),tpe_vl_temp$med_id_sample)
+  
+  ENVfit<-lm(BLUE ~ ., 
+             data=droplevels(tpe_sample_temp[,3:ncol(tpe_sample_temp)]))
+    
+  R<-cor(predict(ENVfit),tpe_sample_temp$BLUE)
+  
+  if (R>=0.6) {
+  message("process= ",i,", nsamp= ",nsamp,", nvar= ",nvar,", R= ",round(R,3),", rgg= ",round(rgg,3))  
+  progress<-rbind(progress,
+  data.frame("iter"=i,"nsamp"=nsamp,"nvar"=nvar,"R"=R,"rgg"=rgg))
+  
+  ENVMkr <- predict(ENVfit,tpe[,-(1:5)]); #ENVMkr[ENVMkr<0]<-0; 
+  #ENVMkr<-rescale(ENVMkr); #hist(ENVMkr)
+  
+  ENVMkrs <- data.frame(ENVMkrs,ENVMkr)
+  
+  i <- i + 1
+    
+  } else {
+    i <- i
+  }
+    
+    
+  
+  
+}
+
+
+```
+

@@ -1,0 +1,66 @@
+---
+title: "Dia_1"
+author: "MBahia"
+format: html
+bibliography: references.bib
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+#Histograma de bivar 'x' e correlação entre bivar 'x' e bivar 'y'.
+
+Comentário gigantesco acerca do tema:
+
+```{r}
+#| echo: false
+
+bivar <- read.csv("data/bivariate.csv")
+str(bivar)
+
+hist(bivar$x, breaks = 10)
+
+plot(bivar$x,bivar$y)
+
+```
+
+Criando coluna que soma o quadrado de x com y (+)
+
+Apresentação dos quartis, valores extremos e média da coluna (+)
+
+Apresentação do histograma dos valores da coluna soma.
+
+```{r}
+
+bivar$sum <- (bivar$x)^2 + bivar$y
+head(bivar)
+summary(bivar$sum)
+
+hist(bivar$sum, breaks = 100)
+
+```
+
+| Col1 | Col2 | Col3 |
+|------|------|------|
+| X    | O    | O    |
+| NA   | X    | O    |
+| O    | X    | X    |
+
+[![Esse é o verdadeiro responsável pelo atentado do 11 de setembro](imagens/celso_portioli.jpg){fig-align="center"}](https://www.band.uol.com.br/entretenimento/o-que-celso-portiolli-tem-a-ver-com-os-atentados-de-11-de-setembro-16631500)
+
+Se pegarmos os valores de a divisão de 11 (dias) por 9 (mês de setembro), temos que
+
+$11/9 = 1.2222222$
+
+1.22222 é nada mais do que:\
+1 + 0.22\
+\
+22 é o número conhecido como "2 patinhos na lagoa"\
+O que reforça a ligação dos patos como os reais mandantes do atentado.
+
+Para mais informações leiam: [@pöysä2016]
